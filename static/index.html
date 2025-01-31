@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CVE List</title>
+    <style>
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        input[type="text"], select, button { padding: 5px; margin-right: 5px; }
+        .pagination { margin-top: 20px; }
+        .pagination button { padding: 5px 10px; margin: 0 2px; cursor: pointer; }
+        .pagination button.active { font-weight: bold; background-color: lightgray; }
+        #loading { display: none; font-style: italic; }
+    </style>
+    <script>
+        let limit = 10, offset = 0, currentPage = 1, totalPages = 1;
+        let searchTimeout;
+
+        async function fetchData() {
+            let searchQuery = document.getElementById("search").value.trim();
+            let url = `http://127.0.0.1:5000/cves?limit=${limit}&offset=${offset}&sort_by=${getSortBy()}&sort_order=${getSortOrder()}`;
+            if (searchQuery) url += `&search=${searchQuery}`;
+
+            document.getElementById("loading").style.display = "block"; 
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                document.getElementById("total-records").textContent = `Total Records: ${data.total_records}`;
+                document.getElementById("page-range").textContent = `Showing ${data.page_range}`;
+
+                let table = document.getElementById("cve-table");
+                table.innerHTML = ""; // Clear table
+                
+                data.cves.forEach(cve => {
+                    let row = table.insertRow();
+                    row.onclick = () => window.location.href = `cve_details.html?id=${cve.id}`;
+                    row.style.cursor = "pointer"; // Make it visually clickable
+                    row.innerHTML = `
+                        <td><a href="cve_details.html?id=${cve.id}" style="text-decoration: none; color: blue;">${cve.id}</a></td>
+                        <td>${cve.source_identifier}</td>
+                        <td>${cve.vuln_status}</td>
+                        <td>${cve.published_date || "N/A"}</td>
+                        <td>${cve.last_modified_date || "N/A"}</td>
+                    `;
+                });
+
+                currentPage = data.current_page;
+                totalPages = data.total_pages;
+
+                displayPagination();
+            } catch (error) {
+                console.error("Error fetching data:", error);
+            } finally {
+                document.getElementById("loading").style.display = "none"; 
+            }
+        }
+
+        function goToPage(pageNumber) {
+            if (pageNumber < 1 || pageNumber > totalPages) return;
+            currentPage = pageNumber;
+            offset = (currentPage - 1) * limit;
+            fetchData();
+        }
+
+        function displayPagination() {
+            let paginationDiv = document.getElementById("pagination");
+            paginationDiv.innerHTML = '';
+
+            if (currentPage > 1) {
+                let prevButton = createPaginationButton("Prev", () => goToPage(currentPage - 1));
+                paginationDiv.appendChild(prevButton);
+            }
+
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, startPage + 4);
+
+            for (let i = startPage; i <= endPage; i++) {
+                let pageButton = createPaginationButton(i, () => goToPage(i), i === currentPage);
+                paginationDiv.appendChild(pageButton);
+            }
+
+            if (currentPage < totalPages) {
+                let nextButton = createPaginationButton("Next", () => goToPage(currentPage + 1));
+                paginationDiv.appendChild(nextButton);
+            }
+        }
+
+        function createPaginationButton(text, onClick, isActive = false) {
+            let button = document.createElement("button");
+            button.textContent = text;
+            button.onclick = onClick;
+            if (isActive) button.classList.add("active");
+            return button;
+        }
+
+        function getSortBy() {
+            return document.getElementById("sort-by").value || "published_date";
+        }
+
+        function getSortOrder() {
+            return document.getElementById("sort-order").value || "ASC";
+        }
+
+        function searchCve() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                offset = 0;
+                fetchData();
+            }, 500); 
+        }
+
+        function changeLimit(newLimit) {
+            limit = parseInt(newLimit);
+            offset = 0;
+            fetchData();
+        }
+
+        window.onload = fetchData;
+    </script>
+</head>
+<body>
+    <h1>CVE List</h1>
+
+    <input type="text" id="search" placeholder="Search by CVE ID" oninput="searchCve()">
+    <br><br>
+
+    <label for="sort-by">Sort By:</label>
+    <select id="sort-by" onchange="fetchData()">
+        <option value="published_date">Published Date</option>
+        <option value="last_modified_date">Last Modified Date</option>
+    </select>
+
+    <label for="sort-order">Sort Order:</label>
+    <select id="sort-order" onchange="fetchData()">
+        <option value="ASC">Ascending</option>
+        <option value="DESC">Descending</option>
+    </select>
+    <br><br>
+
+    <div id="loading">Loading...</div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>CVE ID</th>
+                <th>Source Identifier</th>
+                <th>Vulnerability Status</th>
+                <th>Published Date</th>
+                <th>Last Modified Date</th>
+            </tr>
+        </thead>
+        <tbody id="cve-table"></tbody>
+    </table>
+
+    <div id="total-records"></div>
+    <div id="page-range"></div>
+
+    <div id="pagination" class="pagination"></div>
+
+    <br>
+
+    <label for="limit">Results per page:</label>
+    <select id="limit" onchange="changeLimit(this.value)">
+        <option value="10">10</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+    </select>
+</body>
+</html>
