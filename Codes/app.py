@@ -6,7 +6,7 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-# Database Connection
+
 def get_db_connection():
     return mysql.connector.connect(
         host="localhost",
@@ -15,20 +15,20 @@ def get_db_connection():
         database="cve_db"
     )
 
-# Function to format dates as "DD MMM YYYY"
+
 def format_date(raw_date):
     if raw_date:
         return raw_date.strftime("%d %b %Y")
     return None
 
-# Function to format CVE response
+
 def format_cve_columns(cve):
     if cve:
         cve['source_identifier'] = cve.get('source_identifier')
         cve['vuln_status'] = cve.get('vuln_status')
     return cve
 
-# Route: Get All CVEs with Filters, Sorting, and Pagination
+
 @app.route('/cves', methods=['GET'])
 def get_cves():
     conn = get_db_connection()
@@ -37,7 +37,6 @@ def get_cves():
     query = "SELECT * FROM cve_data WHERE 1=1"
     params = []
 
-    # Filtering
     cve_id = request.args.get('cve_id')
     if cve_id:
         query += " AND id = %s"
@@ -74,12 +73,12 @@ def get_cves():
         query += " AND source_identifier = %s"
         params.append(source_identifier)
 
-    # Sorting
+    
     sort_by = request.args.get('sort_by', 'published_date')
     sort_order = request.args.get('sort_order', 'ASC')
     query += f" ORDER BY {sort_by} {sort_order}"
 
-    # Pagination
+    
     limit = int(request.args.get('limit', 10))
     offset = int(request.args.get('offset', 0))
     query += " LIMIT %s OFFSET %s"
@@ -88,11 +87,10 @@ def get_cves():
     cursor.execute(query, params)
     cves = cursor.fetchall()
 
-    # Get total record count
     cursor.execute("SELECT COUNT(*) AS total FROM cve_data WHERE 1=1")
     total_records = cursor.fetchone()['total']
 
-    # Format data
+    
     for cve in cves:
         cve['published_date'] = format_date(cve['published_date'])
         cve['last_modified_date'] = format_date(cve['last_modified_date'])
@@ -108,28 +106,25 @@ def get_cves():
         'cves': cves
     })
 
-# Route: Get a Single CVE by ID with Additional Details
+
 @app.route('/cve/<string:cve_id>', methods=['GET'])
 def get_cve_page(cve_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Query the database for the CVE details by ID
+ 
     cursor.execute("SELECT * FROM cve_data WHERE id = %s", (cve_id,))
     cve = cursor.fetchone()
 
-    conn.close()
-
     if cve:
-        # Format the dates and columns before returning
+
         cve['published_date'] = format_date(cve['published_date'])
         cve['last_modified_date'] = format_date(cve['last_modified_date'])
-        
-        cve = format_cve_columns(cve)  # Ensure columns are correctly included
-        
-        # Adding necessary CVE metrics
+        cve = format_cve_columns(cve)
+
+ 
         cve['access_vector'] = cve.get('access_vector')
-        cve['severity']=cve.get('severity')
+        cve['severity'] = cve.get('severity')
         cve['access_complexity'] = cve.get('access_complexity')
         cve['authentication'] = cve.get('authentication')
         cve['confidentiality_impact'] = cve.get('confidentiality_impact')
@@ -137,11 +132,29 @@ def get_cve_page(cve_id):
         cve['availability_impact'] = cve.get('availability_impact')
         cve['exploitability_score'] = cve.get('exploitability_score')
         cve['impact_score'] = cve.get('impact_score')
-        
+
+
+        cursor.execute("SELECT * FROM cve_criteria WHERE cve_id = %s", (cve_id,))
+        criteria = cursor.fetchall()
+
+
+        formatted_criteria = []
+        for criterion in criteria:
+            formatted_criteria.append({
+                'criterion_id': criterion['criterion_id'],
+                'description': criterion['criterion_description'],
+                'severity': criterion['severity']
+            })
+
+
+        cve['criteria'] = formatted_criteria
+
+    conn.close()
+
+    if cve:
         return jsonify(cve)
     else:
         return jsonify({"error": "CVE not found"}), 404
-
 
 
 if __name__ == '__main__':
